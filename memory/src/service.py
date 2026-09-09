@@ -10,6 +10,9 @@ from .schemas import MemoryItem, ExtractionResult, MemoryCategory
 from .extractor import MemoryExtractor
 from .store import MemoryStore
 from .retriever import MemoryRetriever
+from .graph_store import KnowledgeGraphStore
+from .graph_extractor import GraphTripleExtractor
+from .graph_traversal import GraphTraversalEngine
 
 
 class MemoryService:
@@ -29,6 +32,9 @@ class MemoryService:
         self.store = store or MemoryStore()
         self.extractor = extractor or MemoryExtractor()
         self.retriever = retriever or MemoryRetriever()
+        self.graph_store = KnowledgeGraphStore()
+        self.graph_extractor = GraphTripleExtractor()
+        self.graph_traversal = GraphTraversalEngine(self.graph_store)
         # Per-user learning state: user_id -> is_learning_enabled (default True)
         self._user_learning_enabled: Dict[str, bool] = {}
 
@@ -74,9 +80,16 @@ class MemoryService:
             session_id=session_id,
         )
 
-        # Incrementally index newly written memories
+        # Incrementally index newly written memories into vector store & knowledge graph
         for item in applied_items:
             self.retriever.index_single(item)
+            triples = self.graph_extractor.extract_triples(
+                text=item.content,
+                user_name=user_id,
+                source_memory_id=item.id,
+            )
+            for t in triples:
+                self.graph_store.add_triple(t, user_id=user_id)
 
         return applied_items, extraction_result
 
@@ -103,6 +116,15 @@ class MemoryService:
     def rebuild_index(self, user_id: Optional[str] = None) -> None:
         all_memories = self.store.get_all(user_id=user_id)
         self.retriever.index_memories(all_memories)
+
+    def retrieve_associative(
+        self,
+        query: str,
+        user_id: str = "default_user",
+        max_hops: int = 2,
+    ) -> list[dict]:
+        """Retrieves multi-hop associative relationships from the knowledge graph."""
+        return self.graph_traversal.traverse(query=query, user_id=user_id, max_hops=max_hops)
 
     # ------------------------------------------------------------------
     # Delegated Store Operations (CRUD & Governance)
