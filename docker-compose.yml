@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: memory_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: memory_postgres
+    environment:
+      POSTGRES_DB: assistant_memory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: memory_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@postgres:5432/assistant_memory
+    depends_on:
+      - postgres
+      - qdrant
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  postgres_data:

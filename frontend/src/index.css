@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+html, body {
+  scrollbar-gutter: stable;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+code, pre {
+  font-family: 'JetBrains Mono', monospace;
+}
