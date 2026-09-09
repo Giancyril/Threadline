@@ -7,6 +7,7 @@ from backend.app.api.memories import router as memories_router
 from backend.app.api.graph import router as graph_router
 from backend.app.api.temporal import router as temporal_router
 from backend.app.api.versioning import router as versioning_router
+from backend.app.api.analytics import router as analytics_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,6 +33,7 @@ app.include_router(memories_router, prefix=settings.API_V1_STR)
 app.include_router(graph_router, prefix=settings.API_V1_STR)
 app.include_router(temporal_router, prefix=settings.API_V1_STR)
 app.include_router(versioning_router, prefix=settings.API_V1_STR)
+app.include_router(analytics_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 async def root():
@@ -44,4 +46,5 @@ async def root():
         "graph": f"{settings.API_V1_STR}/graph",
         "temporal": f"{settings.API_V1_STR}/temporal",
         "versioning": f"{settings.API_V1_STR}/versioning",
+        "analytics": f"{settings.API_V1_STR}/analytics",
     }
