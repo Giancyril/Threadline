@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Brain className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-bold text-sm tracking-tight text-slate-900">Memoria AI</h1>
+            <h1 className="font-bold text-sm tracking-tight text-slate-900">Threadline</h1>
             <p className="text-[11px] text-slate-500 font-medium">Assistant with Long-term Memory</p>
           </div>
         </div>
