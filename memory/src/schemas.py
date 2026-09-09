@@ -1,4 +1,4 @@
-from enum import Enum
+﻿from enum import Enum
 from typing import Optional, Any
 from datetime import datetime, timezone
 import uuid
@@ -25,6 +25,7 @@ class ExtractedMemory(BaseModel):
     conflicts_with_id: Optional[str] = Field(default=None, description="ID of existing memory this contradicts")
     topic_key: Optional[str] = Field(default=None, description="Normalized entity/topic key for deduplication e.g. location, theme, role")
     reasoning: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = Field(default=None, description="Temporal and longevity metadata attached at extraction time")
 
 class MemoryItem(BaseModel):
     id: str = Field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:10]}")

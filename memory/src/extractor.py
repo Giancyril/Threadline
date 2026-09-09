@@ -1,13 +1,88 @@
-import re
+﻿import re
 from typing import Optional, Sequence, Any
 from .schemas import MemoryCategory, MemoryAction, ExtractedMemory, ExtractionResult, MemoryItem
+from .temporal_schemas import LongevityTier, TemporalMetadata
+
+
+class LongevityClassifier:
+    """
+    Heuristic rule-based classifier that assigns a LongevityTier to an extracted memory.
+
+    Rules (in priority order):
+      PERMANENT  -> biographical identity (name, birthplace, profession, language, core tech)
+      PROJECT_BOUND -> project-specific facts, sprint tasks, active branches, deadlines
+      EPHEMERAL  -> time-anchored statements ("today", "tonight", "right now", "this morning")
+    """
+
+    EPHEMERAL_SIGNALS = [
+        r"\btoday\b", r"\btonight\b", r"\bthis morning\b", r"\bthis afternoon\b",
+        r"\bright now\b", r"\bcurrently eating\b", r"\bjust had\b", r"\blunch\b",
+        r"\bbreakfast\b", r"\bdinner\b", r"\bin a meeting\b", r"\bthis hour\b",
+        r"\bthis moment\b", r"\bmomentarily\b",
+    ]
+
+    PROJECT_BOUND_SIGNALS = [
+        r"\bsprint\b", r"\bbranch\b", r"\bdeadline\b", r"\brelease\b",
+        r"\bworking on\b", r"\bbuilding\b", r"\bdeploy\b", r"\bmilestone\b",
+        r"\bticket\b", r"\bjira\b", r"\bpr\b", r"\bpull request\b",
+        r"\bv\d+\.\d+\b", r"\bbeta\b", r"\bstaging\b",
+    ]
+
+    PERMANENT_SIGNALS = [
+        r"\bmy name is\b", r"\bi am a\b", r"\bi'm a\b", r"\bi work as\b",
+        r"\bi was born\b", r"\bi grew up\b", r"\bI live in\b", r"\bI moved to\b",
+        r"\bmy native language\b", r"\bmy mother tongue\b", r"\balways prefer\b",
+        r"\bI always\b", r"\bnever\b.*\buse\b",
+    ]
+
+    def classify(self, memory_content: str, category: MemoryCategory) -> LongevityTier:
+        """
+        Returns the appropriate LongevityTier for the given memory content.
+        Biographical always gets PERMANENT by category default.
+        """
+        text_lower = memory_content.lower()
+
+        # Biographical category is always permanent unless ephemeral signals override
+        if category == MemoryCategory.BIOGRAPHICAL:
+            for pat in self.EPHEMERAL_SIGNALS:
+                if re.search(pat, text_lower, re.IGNORECASE):
+                    return LongevityTier.EPHEMERAL
+            return LongevityTier.PERMANENT
+
+        # Communication style is usually permanent
+        if category == MemoryCategory.COMMUNICATION_STYLE:
+            return LongevityTier.PERMANENT
+
+        # Check ephemeral signals first (highest priority for time-anchored facts)
+        for pat in self.EPHEMERAL_SIGNALS:
+            if re.search(pat, text_lower, re.IGNORECASE):
+                return LongevityTier.EPHEMERAL
+
+        # Then project-bound signals
+        for pat in self.PROJECT_BOUND_SIGNALS:
+            if re.search(pat, text_lower, re.IGNORECASE):
+                return LongevityTier.PROJECT_BOUND
+
+        # Then explicit permanent signals
+        for pat in self.PERMANENT_SIGNALS:
+            if re.search(pat, text_lower, re.IGNORECASE):
+                return LongevityTier.PERMANENT
+
+        # Default for PROJECTS category -> project-bound
+        if category == MemoryCategory.PROJECTS:
+            return LongevityTier.PROJECT_BOUND
+
+        # Default for PREFERENCES -> permanent
+        return LongevityTier.PERMANENT
+
 
 class MemoryExtractor:
     """
     Analyzes conversation turns to extract durable facts and categorize them.
     Features heuristic pattern matching for deterministic offline execution + LLM hooks.
+    Assigns LongevityTier to each extracted memory via LongevityClassifier.
     """
-    
+
     SMALL_TALK_PATTERNS = [
         r"^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|sup)[\s!\.,]*$",
         r"^(how\s+are\s+you|how's\s+it\s+going|what's\s+up)[\s\?!]*$",
@@ -16,6 +91,9 @@ class MemoryExtractor:
     ]
 
     TEMPORAL_NOISE = ["recently", "now", "lately", "currently", "today", "this month", "this year", "a while ago"]
+
+    def __init__(self):
+        self._longevity_classifier = LongevityClassifier()
 
     def is_small_talk(self, text: str) -> bool:
         clean = text.strip().lower()
@@ -49,6 +127,16 @@ class MemoryExtractor:
             res = re.sub(rf"\b{noise}\b", "", res, flags=re.IGNORECASE).strip()
         return res.strip(" ,.-")
 
+    def _annotate_longevity(self, memory: ExtractedMemory) -> ExtractedMemory:
+        """Attach TemporalMetadata to an ExtractedMemory using LongevityClassifier."""
+        tier = self._longevity_classifier.classify(memory.content, memory.category)
+        temporal = TemporalMetadata.calculate_defaults(tier)
+        memory.metadata = memory.metadata or {}
+        memory.metadata["longevity_tier"] = temporal.longevity_tier.value
+        memory.metadata["decay_half_life_days"] = temporal.decay_half_life_days
+        memory.metadata["expires_at"] = temporal.expires_at
+        return memory
+
     def _heuristic_extract(
         self,
         text: str,
@@ -69,18 +157,19 @@ class MemoryExtractor:
                         conflict_id = ex.id
                         action = MemoryAction.UPDATE
                         break
-                
-                results.append(ExtractedMemory(
+
+                mem = ExtractedMemory(
                     content=f"User lives in {city}",
                     category=MemoryCategory.BIOGRAPHICAL,
                     action=action,
                     conflicts_with_id=conflict_id,
                     topic_key="location",
                     reasoning="Identified user residence/location"
-                ))
+                )
+                results.append(self._annotate_longevity(mem))
 
         # 2. Profession / Role extraction (Biographical)
-        role_match = re.search(r"(?:i am a|i'm a|i work as a)\s+([A-Za-z0-9\s]+?)(?:\.|$|,|and|with)", text, re.IGNORECASE)
+        role_match = re.search(r"(?:i am a|i'm a|i work as a)\s+([A-Za-z0-9\s]+?)(?:\.|$|,|\band\b|\bwith\b)", text, re.IGNORECASE)
         if role_match:
             role_raw = role_match.group(1).strip()
             role = self._clean_entity(role_raw)
@@ -93,51 +182,55 @@ class MemoryExtractor:
                         action = MemoryAction.UPDATE
                         break
 
-                results.append(ExtractedMemory(
+                mem = ExtractedMemory(
                     content=f"User works as a {role}",
                     category=MemoryCategory.BIOGRAPHICAL,
                     action=action,
                     conflicts_with_id=conflict_id,
                     topic_key="profession",
                     reasoning="Identified user professional role"
-                ))
+                )
+                results.append(self._annotate_longevity(mem))
 
         # 3. Project extraction (Projects)
         proj_match = re.search(r"(?:building|working on|developing|created a project called|project is)\s+([A-Za-z0-9\s\-_]+?)(?:\.|$|,|\s+using\s+)", text, re.IGNORECASE)
         if proj_match:
             project_name = self._clean_entity(proj_match.group(1)).strip()
             if project_name:
-                results.append(ExtractedMemory(
+                mem = ExtractedMemory(
                     content=f"User is working on project: {project_name}",
                     category=MemoryCategory.PROJECTS,
                     action=MemoryAction.ADD,
                     topic_key=f"project_{project_name.lower()}",
                     reasoning="Identified ongoing project or codebase"
-                ))
+                )
+                results.append(self._annotate_longevity(mem))
 
         # 4. Preferences extraction (Preferences)
-        pref_match = re.search(r"(?:i prefer|i like|i love|my preference is)\s+([A-Za-z0-9\s\-_]+?)(?:\.|$|,|over)", text, re.IGNORECASE)
+        pref_match = re.search(r"(?:i prefer|i like|i love|my preference is)\s+([A-Za-z0-9\s\-_]+?)(?:\.|$|,|\bover\b)", text, re.IGNORECASE)
         if pref_match:
             pref = self._clean_entity(pref_match.group(1))
             if len(pref) > 3 and pref.lower() not in ["this", "that", "it"]:
-                results.append(ExtractedMemory(
+                mem = ExtractedMemory(
                     content=f"User prefers {pref}",
                     category=MemoryCategory.PREFERENCES,
                     action=MemoryAction.ADD,
                     topic_key=f"pref_{pref[:15].lower()}",
                     reasoning="Identified explicit preference"
-                ))
+                )
+                results.append(self._annotate_longevity(mem))
 
         # 5. Communication Style extraction (Communication Style)
         style_match = re.search(r"(?:keep answers|keep responses|please be|prefer responses that are|never use emojis|concise bulleted|always include code|be concise|avoid fluff)(.*?)(?:\.|$)", text, re.IGNORECASE)
         if style_match:
             full_stmt = style_match.group(0).strip()
-            results.append(ExtractedMemory(
+            mem = ExtractedMemory(
                 content=f"User communication preference: {full_stmt}",
                 category=MemoryCategory.COMMUNICATION_STYLE,
                 action=MemoryAction.ADD,
                 topic_key="comm_style",
                 reasoning="Identified communication style directive"
-            ))
+            )
+            results.append(self._annotate_longevity(mem))
 
         return results
