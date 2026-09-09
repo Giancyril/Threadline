@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Tuple
 from memory.src.federation_schemas import TMEFBundle, FederationImportResult, ExportedMemoryItem
 from memory.src.contradiction_scorer import ContradictionScorer
+from memory.src.schemas import MemoryCategory
 
 
 class FederationMergeResolver:
@@ -36,7 +37,6 @@ class FederationMergeResolver:
         conflicts: List[Dict[str, Any]] = []
 
         local_by_content = {m.get("content", "").strip().lower(): m for m in merged}
-        local_by_id = {m.get("id"): m for m in merged}
 
         for item in bundle.memories:
             cleaned_content = item.content.strip()
@@ -49,11 +49,17 @@ class FederationMergeResolver:
 
             # 2. Check for semantic contradiction with existing memories in same category
             contradiction_found = False
+            try:
+                cat_enum = MemoryCategory(item.category)
+            except Exception:
+                cat_enum = MemoryCategory.PREFERENCES
+
             for loc in merged:
                 if loc.get("category") == item.category:
-                    score, explanation = self.contradiction_scorer.score_contradiction(
+                    score, explanation = self.contradiction_scorer.score(
                         loc.get("content", ""),
-                        cleaned_content
+                        cleaned_content,
+                        category=cat_enum
                     )
                     if score >= self.conflict_threshold:
                         contradiction_found = True
@@ -73,7 +79,6 @@ class FederationMergeResolver:
                             loc["content"] = cleaned_content
                             loc["source_agent"] = f"federated:{bundle.source_agent.agent_name}"
                             imported_count += 1
-                        # If local_wins or auto, we keep local and record conflict
                         break
 
             if contradiction_found and strategy != "remote_wins":

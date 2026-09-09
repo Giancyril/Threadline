@@ -11,7 +11,7 @@ from typing import Tuple, Dict, Any, List
 
 
 PII_PATTERNS = [
-    ("api_key", re.compile(r"\b(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]{20,}|AIza[0-9A-Za-z-_]{35})\b", re.IGNORECASE), "[REDACTED_API_KEY]"),
+    ("api_key", re.compile(r"\b(sk-[a-zA-Z0-9_\-]{15,}|ghp_[a-zA-Z0-9]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]{20,}|AIza[0-9A-Za-z-_]{35})\b", re.IGNORECASE), "[REDACTED_API_KEY]"),
     ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"), "[REDACTED_EMAIL]"),
     ("phone", re.compile(r"\b(\+?[0-9]{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"), "[REDACTED_PHONE]"),
     ("credit_card", re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b"), "[REDACTED_CARD]"),
