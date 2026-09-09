@@ -5,11 +5,12 @@ import { MemoryView } from './components/MemoryPanel/MemoryView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { GraphVisualizer } from './components/Graph/GraphVisualizer';
 import { SemanticDriftView } from './components/Analytics/SemanticDriftView';
+import { FederationHub } from './components/Federation/FederationHub';
 import { ChatMessage, MemoryItem, MemoryCategory } from './lib/types';
 import * as api from './lib/api';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'graph' | 'analytics' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'graph' | 'analytics' | 'federation' | 'settings'>('chat');
   const [memoryStatus, setMemoryStatus] = useState<'active' | 'paused'>('active');
   const [userId] = useState<string>('default_user');
   const [sessionId] = useState<string>('session_main');
@@ -174,6 +175,7 @@ export const App: React.FC = () => {
         )}
         {activeTab === 'graph' && <GraphVisualizer userId={userId} />}
         {activeTab === 'analytics' && <SemanticDriftView />}
+        {activeTab === 'federation' && <FederationHub />}
         {activeTab === 'settings' && <SettingsView />}
       </main>
     </div>

@@ -1,9 +1,9 @@
 ﻿import React from 'react';
-import { MessageSquare, Brain, Sliders, ShieldCheck, Share2, TrendingUp } from 'lucide-react';
+import { MessageSquare, Brain, Sliders, ShieldCheck, Share2, TrendingUp, Network } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'chat' | 'memory' | 'graph' | 'analytics' | 'settings';
-  setActiveTab: (tab: 'chat' | 'memory' | 'graph' | 'analytics' | 'settings') => void;
+  activeTab: 'chat' | 'memory' | 'graph' | 'analytics' | 'federation' | 'settings';
+  setActiveTab: (tab: 'chat' | 'memory' | 'graph' | 'analytics' | 'federation' | 'settings') => void;
   memoryCount: number;
   memoryStatus: 'active' | 'paused';
 }
@@ -90,7 +90,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <TrendingUp className="w-4 h-4" />
               <span>Drift & Topology</span>
             </div>
-            <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">AI</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('federation')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'federation'
+                ? 'bg-indigo-50 text-indigo-700 font-bold'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Network className="w-4 h-4" />
+              <span>Federation Hub</span>
+            </div>
+            <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono">TMEF</span>
           </button>
 
           <button
