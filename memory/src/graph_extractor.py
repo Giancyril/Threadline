@@ -37,7 +37,7 @@ class GraphTripleExtractor:
                 ))
 
         # 2. Profession: User works_as <Role>
-        role = re.search(r"(?:i am a|works as a|is a|i work as a)\s+([A-Za-z0-9\s]+?)(?:\.|$|,| with | at )", clean, re.IGNORECASE)
+        role = re.search(r"(?:i am a|works as a|work as a|is a|i work as a)\s+([A-Za-z0-9\s]+?)(?:\.|\$|,| with | at | and )", clean, re.IGNORECASE)
         if role:
             role_name = role.group(1).strip().title()
             if role_name and not any(w in role_name.lower() for w in ["bit", "fan", "good"]):
