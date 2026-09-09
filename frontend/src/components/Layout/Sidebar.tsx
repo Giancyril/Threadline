@@ -2,8 +2,8 @@ import React from 'react';
 import { MessageSquare, Brain, Sliders, ShieldCheck } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'chat' | 'memory' | 'settings';
-  setActiveTab: (tab: 'chat' | 'memory' | 'settings') => void;
+  activeTab: 'chat' | 'memory' | 'graph' | 'settings';
+  setActiveTab: (tab: 'chat' | 'memory' | 'graph' | 'settings') => void;
   memoryCount: number;
   memoryStatus: 'active' | 'paused';
 }

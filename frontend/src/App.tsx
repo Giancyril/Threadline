@@ -3,11 +3,12 @@ import { Sidebar } from './components/Layout/Sidebar';
 import { ChatView } from './components/Chat/ChatView';
 import { MemoryView } from './components/MemoryPanel/MemoryView';
 import { SettingsView } from './components/Settings/SettingsView';
+import { GraphVisualizer } from './components/Graph/GraphVisualizer';
 import { ChatMessage, MemoryItem, MemoryCategory } from './lib/types';
 import * as api from './lib/api';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'graph' | 'settings'>('chat');
   const [memoryStatus, setMemoryStatus] = useState<'active' | 'paused'>('active');
   const [userId] = useState<string>('default_user');
   const [sessionId] = useState<string>('session_main');
@@ -171,6 +172,7 @@ export const App: React.FC = () => {
             onResetAll={handleResetAll}
           />
         )}
+        {activeTab === 'graph' && <GraphVisualizer userId={userId} />}
         {activeTab === 'settings' && <SettingsView />}
       </main>
     </div>
