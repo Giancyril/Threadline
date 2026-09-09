@@ -1,6 +1,7 @@
 ﻿import React, { useState, useCallback } from 'react';
-import { Search, Trash2, Edit2, Brain, PauseCircle, PlayCircle, RotateCcw, Clock, Infinity, Folder, Zap } from 'lucide-react';
-import { MemoryItem } from '../../lib/types';
+import { Search, Trash2, Edit2, Brain, PauseCircle, PlayCircle, RotateCcw, Clock, Infinity, Folder, Zap, History } from 'lucide-react';
+import { MemoryItem, LongevityTier, MemorySnapshot, MemoryDiff } from '../../lib/types';
+import { VersionHistoryModal } from './VersionHistoryModal';
 
 interface MemoryViewProps {
   memories: MemoryItem[];
@@ -10,8 +11,6 @@ interface MemoryViewProps {
   onToggleStatus: () => void;
   onResetAll: () => void;
 }
-
-type LongevityTier = 'ephemeral' | 'project_bound' | 'permanent';
 
 const TIER_CONFIG: Record<LongevityTier, { label: string; color: string; bg: string; icon: React.ReactNode; description: string }> = {
   ephemeral: {
@@ -45,10 +44,10 @@ function getExpiryCountdown(expiresAt: string | null | undefined): string | null
   if (diffMs <= 0) return 'Expired';
   const hours = Math.floor(diffMs / 3600000);
   const days = Math.floor(hours / 24);
-  if (days > 1) return Expires in d;
-  if (hours > 1) return Expires in h;
+  if (days > 1) return `Expires in ${days}d`;
+  if (hours > 1) return `Expires in ${hours}h`;
   const minutes = Math.floor(diffMs / 60000);
-  return Expires in m;
+  return `Expires in ${minutes}m`;
 }
 
 function LongevityBadge({ tier, expiresAt }: { tier?: LongevityTier; expiresAt?: string | null }) {
@@ -57,7 +56,7 @@ function LongevityBadge({ tier, expiresAt }: { tier?: LongevityTier; expiresAt?:
   const countdown = getExpiryCountdown(expiresAt);
 
   return (
-    <div className={lex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border  }
+    <div className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${config.bg} ${config.color}`}
          title={config.description}>
       {config.icon}
       <span>{config.label}</span>
@@ -82,6 +81,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
 
+  // History modal state
+  const [historyMemory, setHistoryMemory] = useState<MemoryItem | null>(null);
+  const [snapshots, setSnapshots] = useState<MemorySnapshot[]>([]);
+  const [diffs, setDiffs] = useState<MemoryDiff[]>([]);
+  // loading history
+
   const categories = [
     { id: 'all', label: 'All Context' },
     { id: 'preferences', label: 'Preferences' },
@@ -92,9 +97,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
 
   const tiers = [
     { id: 'all', label: 'All Tiers' },
-    { id: 'permanent', label: '∞ Permanent' },
-    { id: 'project_bound', label: '📁 Project' },
-    { id: 'ephemeral', label: '⚡ Ephemeral' }
+    { id: 'permanent', label: 'Permanent' },
+    { id: 'project_bound', label: 'Project' },
+    { id: 'ephemeral', label: 'Ephemeral' }
   ];
 
   const filteredMemories = memories.filter(m => {
@@ -117,6 +122,62 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
     setEditingId(null);
   }, [editText, onEditMemory]);
 
+  const openHistory = async (memory: MemoryItem) => {
+    setHistoryMemory(memory);
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/versioning/${memory.id}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshots(data.snapshots || []);
+        setDiffs(data.diffs || []);
+      } else {
+        // Fallback default snapshot
+        setSnapshots([{
+          snapshot_id: `snap_${memory.id}_1`,
+          memory_id: memory.id,
+          version: 1,
+          content: memory.content,
+          trigger: 'initial',
+          triggered_by: 'system',
+          snapshot_at: memory.created_at
+        }]);
+        setDiffs([]);
+      }
+    } catch {
+      setSnapshots([{
+        snapshot_id: `snap_${memory.id}_1`,
+        memory_id: memory.id,
+        version: 1,
+        content: memory.content,
+        trigger: 'initial',
+        triggered_by: 'system',
+        snapshot_at: memory.created_at
+      }]);
+      setDiffs([]);
+    } finally {
+      
+    }
+  };
+
+  const handleRestore = async (memoryId: string, toVersion: number) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/versioning/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memory_id: memoryId, to_version: toVersion })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onEditMemory(memoryId, data.restored_content);
+      }
+    } catch (e) {
+      console.error('Failed to rollback:', e);
+    } finally {
+      setHistoryMemory(null);
+    }
+  };
+
   // Stats
   const permanentCount = memories.filter(m => !m.metadata?.longevity_tier || m.metadata?.longevity_tier === 'permanent').length;
   const projectCount = memories.filter(m => m.metadata?.longevity_tier === 'project_bound').length;
@@ -130,14 +191,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
             <Brain className="w-5 h-5 text-indigo-600" />
             Memory Management Bank
           </h2>
-          <p className="text-xs text-slate-500">Inspect, edit, or purge what your assistant remembers across sessions</p>
+          <p className="text-xs text-slate-500">Inspect, edit, version, or purge what your assistant remembers across sessions</p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onToggleStatus}
-            className={px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer }
+            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              memoryStatus === 'active'
+                ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+            }`}
           >
             {memoryStatus === 'active' ? <PauseCircle className="w-4 h-4 text-slate-500" /> : <PlayCircle className="w-4 h-4 text-amber-600" />}
             {memoryStatus === 'active' ? 'Pause Learning' : 'Resume Learning'}
@@ -190,7 +255,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
               key={c.id}
               type="button"
               onClick={() => setActiveCategory(c.id)}
-              className={px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer }
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeCategory === c.id
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
             >
               {c.label}
             </button>
@@ -204,7 +273,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
               key={t.id}
               type="button"
               onClick={() => setActiveTier(t.id)}
-              className={px-3 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer }
+              className={`px-3 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                activeTier === t.id
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
             >
               {t.label}
             </button>
@@ -228,7 +301,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
             return (
               <div
                 key={m.id}
-                className={p-4 bg-white border rounded-xl shadow-xs hover:border-slate-300 transition-all flex items-start justify-between gap-4 }
+                className={`p-4 bg-white border rounded-xl shadow-xs hover:border-slate-300 transition-all flex items-start justify-between gap-4 ${
+                  isExpired ? 'opacity-60 bg-slate-50' : ''
+                }`}
               >
                 <div className="flex-1 space-y-1.5">
                   {editingId === m.id ? (
@@ -248,7 +323,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <p className={	ext-xs font-medium leading-relaxed }>
+                    <p className={`text-xs font-medium leading-relaxed ${isExpired ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                       {m.content}
                     </p>
                   )}
@@ -265,7 +340,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
                     )}
                     {isExpired && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-red-50 text-red-600 font-semibold border border-red-200">
-                        ⏰ Expired
+                        Expired
                       </span>
                     )}
                     <span className="text-[10px] text-slate-400">Added {new Date(m.created_at).toLocaleDateString()}</span>
@@ -273,6 +348,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openHistory(m)}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                    title="Version History & Contradictions"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => startEdit(m)}
@@ -295,6 +378,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({
           })
         )}
       </div>
+
+      {/* Version History Modal */}
+      {historyMemory && (
+        <VersionHistoryModal
+          memoryId={historyMemory.id}
+          memoryContent={historyMemory.content}
+          snapshots={snapshots}
+          diffs={diffs}
+          onClose={() => setHistoryMemory(null)}
+          onRestore={handleRestore}
+        />
+      )}
     </div>
   );
 };
