@@ -57,7 +57,7 @@ class MemoryExtractor:
         results: list[ExtractedMemory] = []
 
         # 1. Location extraction (Biographical)
-        loc_match = re.search(r"(?:i live in|i moved to|i'm based in|based in|living in)\s+([A-Za-z\s]+?)(?:\.|$|,|and)", text, re.IGNORECASE)
+        loc_match = re.search(r"(?:i now live in|i live in|i moved to|moved to|i'm based in|based in|living in|now living in)\s+([A-Za-z\s]+?)(?:\.|$|,| and )", text, re.IGNORECASE)
         if loc_match:
             city_raw = loc_match.group(1).strip()
             city = self._clean_entity(city_raw).title()
