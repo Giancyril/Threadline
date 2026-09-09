@@ -1,9 +1,9 @@
-import React from 'react';
-import { MessageSquare, Brain, Sliders, ShieldCheck } from 'lucide-react';
+﻿import React from 'react';
+import { MessageSquare, Brain, Sliders, ShieldCheck, Share2, TrendingUp } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'chat' | 'memory' | 'graph' | 'settings';
-  setActiveTab: (tab: 'chat' | 'memory' | 'graph' | 'settings') => void;
+  activeTab: 'chat' | 'memory' | 'graph' | 'analytics' | 'settings';
+  setActiveTab: (tab: 'chat' | 'memory' | 'graph' | 'analytics' | 'settings') => void;
   memoryCount: number;
   memoryStatus: 'active' | 'paused';
 }
@@ -60,6 +60,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-[11px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
               {memoryCount}
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('graph')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'graph'
+                ? 'bg-indigo-50 text-indigo-700 font-bold'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Share2 className="w-4 h-4" />
+              <span>Knowledge Graph</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('analytics')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'analytics'
+                ? 'bg-indigo-50 text-indigo-700 font-bold'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <TrendingUp className="w-4 h-4" />
+              <span>Drift & Topology</span>
+            </div>
+            <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">AI</span>
           </button>
 
           <button

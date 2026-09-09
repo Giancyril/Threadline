@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Layout/Sidebar';
 import { ChatView } from './components/Chat/ChatView';
 import { MemoryView } from './components/MemoryPanel/MemoryView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { GraphVisualizer } from './components/Graph/GraphVisualizer';
+import { SemanticDriftView } from './components/Analytics/SemanticDriftView';
 import { ChatMessage, MemoryItem, MemoryCategory } from './lib/types';
 import * as api from './lib/api';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'graph' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'graph' | 'analytics' | 'settings'>('chat');
   const [memoryStatus, setMemoryStatus] = useState<'active' | 'paused'>('active');
   const [userId] = useState<string>('default_user');
   const [sessionId] = useState<string>('session_main');
@@ -105,7 +106,6 @@ export const App: React.FC = () => {
         refreshMemories();
       }
     } else {
-      // Local fallback simulation when backend is not actively running in this browser session
       setTimeout(() => {
         const assistantMsg: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
@@ -173,6 +173,7 @@ export const App: React.FC = () => {
           />
         )}
         {activeTab === 'graph' && <GraphVisualizer userId={userId} />}
+        {activeTab === 'analytics' && <SemanticDriftView />}
         {activeTab === 'settings' && <SettingsView />}
       </main>
     </div>
