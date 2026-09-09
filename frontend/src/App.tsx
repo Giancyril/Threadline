@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Layout/Sidebar';
 import { ChatView } from './components/Chat/ChatView';
 import { MemoryView } from './components/MemoryPanel/MemoryView';
 import { SettingsView } from './components/Settings/SettingsView';
-import { ChatMessage, MemoryItem } from './lib/types';
+import { ChatMessage, MemoryItem, MemoryCategory } from './lib/types';
+import * as api from './lib/api';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chat' | 'memory' | 'settings'>('chat');
   const [memoryStatus, setMemoryStatus] = useState<'active' | 'paused'>('active');
+  const [userId] = useState<string>('default_user');
+  const [sessionId] = useState<string>('session_main');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Initial demo memories to provide immediate visual feedback
+  // Initial memories
   const [memories, setMemories] = useState<MemoryItem[]>([
     {
       id: 'mem-1',
@@ -20,7 +24,7 @@ export const App: React.FC = () => {
     },
     {
       id: 'mem-2',
-      content: 'Current primary project is AI Assistant With Memory using Mem0 and CrewAI.',
+      content: 'Current primary project is AI Assistant With Memory using Mem0 and Qdrant.',
       category: 'projects',
       source_agent: 'personal_assistant',
       created_at: 'Today, 2:18 PM'
@@ -44,43 +48,99 @@ export const App: React.FC = () => {
     }
   ]);
 
-  const handleSendMessage = (text: string) => {
+  // Load from backend on mount
+  const refreshMemories = useCallback(async () => {
+    const remote = await api.fetchMemories(userId);
+    if (remote && remote.length > 0) {
+      setMemories(remote);
+    }
+    const learningActive = await api.getLearningStatus(userId);
+    setMemoryStatus(learningActive ? 'active' : 'paused');
+  }, [userId]);
+
+  useEffect(() => {
+    refreshMemories();
+  }, [refreshMemories]);
+
+  const handleSendMessage = async (text: string) => {
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: text,
-      timestamp: 'Just now'
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
 
-    // Simulated responsive turn with memory injection
-    setTimeout(() => {
+    const learnEnabled = memoryStatus === 'active';
+    const response = await api.sendChatMessage(
+      text,
+      userId,
+      sessionId,
+      messages,
+      true,
+      learnEnabled
+    );
+
+    if (response) {
       const assistantMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
-        content: `Got it! I\'ve noted that into your long-term memory. Since you prefer concise answers and are building the AI Assistant With Memory project, I will keep our next steps aligned to your roadmap.`,
-        timestamp: 'Just now',
-        memories_used: [memories[0], memories[1]]
+        content: response.reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        memories_used: (response.injected_memories || []).map((m: any) => ({
+          id: m.id,
+          content: m.content,
+          category: m.category as MemoryCategory,
+          created_at: 'Recalled context',
+          score: m.score,
+        })),
       };
       setMessages(prev => [...prev, assistantMsg]);
-    }, 600);
+
+      // Refresh memory list if new facts were learned
+      if (response.newly_learned_memories && response.newly_learned_memories.length > 0) {
+        refreshMemories();
+      }
+    } else {
+      // Local fallback simulation when backend is not actively running in this browser session
+      setTimeout(() => {
+        const assistantMsg: ChatMessage = {
+          id: `msg-${Date.now() + 1}`,
+          role: 'assistant',
+          content: `Noted! I've retained your message: "${text}". Memory learning is ${memoryStatus}.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          memories_used: [memories[0]],
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+      }, 500);
+    }
+    setIsLoading(false);
   };
 
-  const handleDeleteMemory = (id: string) => {
+  const handleDeleteMemory = async (id: string) => {
+    await api.deleteMemory(id);
     setMemories(prev => prev.filter(m => m.id !== id));
   };
 
-  const handleEditMemory = (id: string, newContent: string) => {
+  const handleEditMemory = async (id: string, newContent: string) => {
+    const existing = memories.find(m => m.id === id);
+    if (existing) {
+      await api.updateMemory(id, newContent, existing.category);
+    }
     setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
   };
 
-  const handleToggleStatus = () => {
-    setMemoryStatus(prev => prev === 'active' ? 'paused' : 'active');
+  const handleToggleStatus = async () => {
+    const nextStatus = memoryStatus === 'active' ? 'paused' : 'active';
+    const ok = await api.setLearningStatus(nextStatus === 'active', userId);
+    setMemoryStatus(ok ? 'active' : 'paused');
   };
 
-  const handleResetAll = () => {
+  const handleResetAll = async () => {
     if (window.confirm('Purge all stored memories? This cannot be undone.')) {
+      await api.purgeAllMemories(userId);
       setMemories([]);
     }
   };
@@ -98,7 +158,7 @@ export const App: React.FC = () => {
           <ChatView
             messages={messages}
             onSendMessage={handleSendMessage}
-            isLoading={false}
+            isLoading={isLoading}
           />
         )}
         {activeTab === 'memory' && (
