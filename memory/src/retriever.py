@@ -1,7 +1,8 @@
-"""
-Retrieval layer — wraps a Qdrant in-memory collection with:
+﻿"""
+Retrieval layer - wraps a Qdrant in-memory collection with:
   - Vector similarity search over TF-IDF embeddings
   - Recency decay bonus (newer memories score slightly higher)
+  - Longevity-tier awareness (PERMANENT memories get a stability boost)
   - User/category scoping via Qdrant payload filters
 """
 from __future__ import annotations
@@ -10,20 +11,24 @@ import datetime
 
 from .schemas import MemoryItem, MemoryCategory
 from .embedder import TFIDFEmbedder
+from .temporal_schemas import LongevityTier
 
 
 class MemoryRetriever:
     """
     Semantic retriever backed by an in-memory Qdrant collection.
-    QdrantClient(":memory:") runs entirely in-process — no server needed.
+    QdrantClient(":memory:") runs entirely in-process - no server needed.
     Switch to QdrantClient(url=...) for production.
 
     Uses query_points() (qdrant-client v1.x API).
+    Payload schema includes: memory_id, user_id, category, created_at,
+    longevity_tier, expires_at for temporal-aware filtering.
     """
 
     COLLECTION_NAME = "memory_bank"
     RECENCY_WEIGHT = 0.08           # 8% bonus for very fresh memories
     RECENCY_HALF_LIFE_DAYS = 90     # score decays to 50% after 90 days
+    PERMANENT_STABILITY_BONUS = 0.05  # Small boost for PERMANENT tier memories
 
     def __init__(
         self,
@@ -60,7 +65,8 @@ class MemoryRetriever:
     # ------------------------------------------------------------------
 
     def index_memories(self, memories: list[MemoryItem]) -> None:
-        """Re-fit the embedder on all memories and bulk index into Qdrant."""
+        """Re-fit the embedder on all memories and bulk index into Qdrant.
+        Payload includes longevity_tier and expires_at for temporal filtering."""
         if not memories:
             return
 
@@ -77,6 +83,10 @@ class MemoryRetriever:
         points = []
         for memory, vector in zip(memories, vectors):
             self._indexed[memory.id] = memory
+            # Extract longevity fields from metadata if present
+            longevity_tier = memory.metadata.get("longevity_tier", LongevityTier.PERMANENT.value)
+            expires_at = memory.metadata.get("expires_at", None)
+
             points.append(
                 PointStruct(
                     id=self._stable_int_id(memory.id),
@@ -86,6 +96,8 @@ class MemoryRetriever:
                         "user_id": memory.user_id,
                         "category": memory.category.value,
                         "created_at": memory.created_at,
+                        "longevity_tier": longevity_tier,
+                        "expires_at": expires_at,
                     },
                 )
             )
@@ -111,9 +123,12 @@ class MemoryRetriever:
         category: Optional[MemoryCategory] = None,
         limit: int = 5,
         recency_boost: bool = True,
+        exclude_expired: bool = True,
     ) -> list[tuple[MemoryItem, float]]:
         """
         Return top-k memories ranked by cosine similarity + optional recency bonus.
+        PERMANENT memories receive a small stability bonus.
+        Expired EPHEMERAL memories are excluded when exclude_expired=True.
         Returns list of (MemoryItem, final_score) tuples.
         """
         if self._client is None or not self._indexed:
@@ -148,7 +163,7 @@ class MemoryRetriever:
 
         hit_list = response.points if hasattr(response, "points") else response
 
-        # Rerank with recency decay
+        # Rerank with recency decay + longevity bonus
         scored: list[tuple[MemoryItem, float]] = []
         now = datetime.datetime.now(datetime.timezone.utc)
 
@@ -157,6 +172,20 @@ class MemoryRetriever:
             if not mem_id or mem_id not in self._indexed:
                 continue
             item = self._indexed[mem_id]
+
+            # Exclude expired memories if requested
+            if exclude_expired:
+                expires_at = hit.payload.get("expires_at")
+                if expires_at:
+                    try:
+                        expiry_dt = datetime.datetime.fromisoformat(expires_at)
+                        if expiry_dt.tzinfo is None:
+                            expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
+                        if now > expiry_dt:
+                            continue  # Skip expired memory
+                    except (ValueError, AttributeError):
+                        pass
+
             cos_score = hit.score         # cosine already 0-1
 
             final_score = cos_score
@@ -170,6 +199,11 @@ class MemoryRetriever:
                     final_score = cos_score * (1 + self.RECENCY_WEIGHT * decay)
                 except (ValueError, AttributeError):
                     pass
+
+            # Stability bonus for PERMANENT tier memories
+            longevity_tier = hit.payload.get("longevity_tier", "")
+            if longevity_tier == LongevityTier.PERMANENT.value:
+                final_score += self.PERMANENT_STABILITY_BONUS
 
             scored.append((item, final_score))
 
