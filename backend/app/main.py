@@ -4,6 +4,7 @@ from backend.app.core.config import settings
 from backend.app.api.health import router as health_router
 from backend.app.api.chat import router as chat_router
 from backend.app.api.memories import router as memories_router
+from backend.app.api.graph import router as graph_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,6 +27,7 @@ app.add_middleware(
 app.include_router(health_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 app.include_router(memories_router, prefix=settings.API_V1_STR)
+app.include_router(graph_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 async def root():
